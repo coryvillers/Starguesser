@@ -1,0 +1,149 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>StarGuess Pro | Ultimate Edition</title>
+    <link rel="stylesheet" href="style.css">
+</head>
+<body>
+
+    <div id="setup-container" class="central-card">
+        <h1>Star<span>Guess</span></h1>
+        
+        <div id="user-display" style="font-size: 0.8rem; opacity: 0.7; margin-bottom: 20px; color: var(--primary);"></div>
+
+        <!-- STEP 1: Player Count & Mode Selection -->
+        <div id="step-1-container">
+            <div class="setup-group">
+                <label>Game Type</label>
+                <div class="mode-toggles">
+                    <button class="mode-btn active" id="type-local" onclick="selectGameType('local')">Local Multiplayer</button>
+                    <button class="mode-btn" id="type-online" onclick="selectGameType('online')">Online Face-Off</button>
+                </div>
+            </div>
+
+            <div id="local-setup" class="setup-group">
+                <label>Number of Players</label>
+                <input type="number" id="player-count" min="1" max="10" value="1" oninput="generateNameInputs()">
+                <div id="name-inputs-container"></div>
+                <button class="diff-btn" onclick="proceedToOptions()" style="margin-top: 10px;">Next</button>
+            </div>
+
+            <div id="online-setup" class="setup-group" style="display: none;">
+                <label>Online Options</label>
+                <div class="button-group">
+                    <button class="mode-btn" style="background: #6c5ce7;" onclick="createLobby()">Host Game</button>
+                    <button class="mode-btn" style="background: #a29bfe;" onclick="showJoinInput()">Join Game</button>
+                </div>
+                <div id="join-input-area" style="display:none; margin-top:10px;">
+                    <input type="text" id="lobby-code-input" placeholder="Enter 6-digit code" maxlength="6" class="name-input">
+                    <button class="diff-btn" style="background: var(--success);" onclick="joinLobby()">Connect & Play</button>
+                </div>
+            </div>
+        </div>
+
+        <!-- STEP 2: Mode, Category & Difficulty Selection (Hidden initially) -->
+        <div id="step-2-container" style="display: none;">
+            <div class="setup-group">
+                <label>Category</label>
+                <div class="mode-toggles">
+                    <button class="mode-btn active" id="cat-global" onclick="setCategory('global')">Global Stars</button>
+                    <button class="mode-btn" id="cat-jav" onclick="setCategory('jav')">JAV Models</button>
+                </div>
+            </div>
+
+            <div class="setup-group">
+                <label>Mode & Difficulty</label>
+                <div class="mode-toggles">
+                    <button class="mode-btn active" id="mode-normal" onclick="setMode('normal')">Normal</button>
+                    <button class="mode-btn" id="mode-timed" onclick="setMode('timed')">Timed</button>
+                </div>
+                <select id="time-limit" style="display: none; margin-top: 10px; width: 100%; padding: 10px; border-radius: 8px; background: #25252e; color: white; border: none;">
+                    <option value="40">Relaxed (40s)</option>
+                    <option value="20" selected>Standard (20s)</option>
+                    <option value="10">Pro (10s)</option>
+                </select>
+            </div>
+
+            <div class="setup-group">
+                <label>Select Level</label>
+                <div class="difficulty-grid">
+                    <button class="diff-btn" id="diff-easy" onclick="selectDifficulty('easy')">Easy</button>
+                    <button class="diff-btn" id="diff-medium" onclick="selectDifficulty('medium')">Medium</button>
+                    <button class="diff-btn" id="diff-hard" onclick="selectDifficulty('hard')">Hard</button>
+                </div>
+            </div>
+
+            <div class="setup-group">
+                <button class="diff-btn" style="background: var(--success); font-size: 1.1rem; padding: 15px;" onclick="startSelectedGame()">START GAME</button>
+                <button class="diff-btn" style="background: #555; margin-top: 10px;" onclick="goBackToStep1()">Back</button>
+            </div>
+
+            <button id="resume-btn" onclick="resumeSession()" style="display:none; margin-top:10px; background:#2ecc71; width:100%; color:white;">Resume Last Session</button>
+        </div>
+    </div>
+
+    <div id="game-view" style="display: none;">
+        <aside id="sidebar">
+            <div class="header-actions" style="justify-content: space-between; align-items: center; margin-bottom: 15px;">
+                <h2 style="margin:0;">Ranking</h2>
+                <button onclick="resetSession()" style="background:transparent; border:none; cursor:pointer; font-size:1.2rem;" title="Reset Session">🗑️</button>
+            </div>
+            <div id="player-list"></div>
+            
+            <hr style="border: 0; border-top: 1px solid #333; margin: 15px 0;">
+            
+            <div class="header-actions" style="justify-content: space-between; align-items: center; margin-bottom: 10px;">
+                <h2 style="margin:0;">History</h2>
+                <button onclick="toggleHistory()" style="background:transparent; border:none; cursor:pointer; font-size:1.2rem;" title="Show/Hide">📜</button>
+            </div>
+            <div id="history-list" style="display: none;"></div>
+
+            <button id="quit-btn" onclick="showEndGame()">End Session</button>
+        </aside>
+
+        <main class="game-wrapper">
+            <div id="game-container">
+                <div id="timer-bar-container" style="display: none;">
+                    <div id="timer-bar"></div>
+                </div>
+                
+                <div class="image-frame">
+                    <img id="star-image" src="" alt="Loading...">
+                </div>
+
+                <div class="input-section">
+                    <input type="text" id="guess-input" placeholder="Who is this?" autocomplete="off" oninput="toggleSelectionUI()">
+                    
+                    <div id="quick-select-zone" style="display:none;">
+                        <p style="font-size: 0.7rem; color: #666; margin: 5px 0;">Select Winners (Shortcuts: 1, 2, 3...)</p>
+                        <div id="selection-pills"></div>
+                    </div>
+
+                    <div id="feedback"></div>
+                    <div id="hint-text"></div>
+                    
+                    <div class="button-group">
+                        <button id="submit-btn" onclick="checkGuess()">Submit</button>
+                        <button id="hint-btn" onclick="revealHint()">Hint (H)</button>
+                        <button id="reveal-btn" onclick="revealName()">Reveal (R)</button>
+                        <button id="next-btn" onclick="nextRound()" style="display: none;">Next (Space) ➔</button>
+                    </div>
+                </div>
+            </div>
+        </main>
+    </div>
+
+    <div id="end-game-overlay" class="overlay" style="display: none;">
+        <div class="end-card">
+            <h1>Game Over</h1>
+            <div id="podium-container"></div>
+            <button class="diff-btn" onclick="location.reload()" style="margin-top: 20px; background: var(--primary);">Return to Menu</button>
+        </div>
+    </div>
+
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+    <script src="script.js"></script>
+</body>
+</html>
