@@ -37,6 +37,7 @@ let lobbyCode = null;
 let isHost = false;
 let isOnline = false;
 let lobbySubscription = null;
+let lastSyncedStarId = -1;
 
 // --- 4. SETUP STATE ---
 let selectedGameType = 'local';
@@ -102,7 +103,6 @@ function selectGameType(type) {
 }
 
 function proceedToOptions() {
-    // Hide step 1, show step 2
     document.getElementById('step-1-container').style.display = 'none';
     document.getElementById('step-2-container').style.display = 'block';
 }
@@ -126,26 +126,21 @@ function startSelectedGame() {
         return;
     }
     
-    // If online and host, create lobby first
     if (isOnline && isHost) {
         createLobbyInSupabase();
     } else if (isOnline && !isHost) {
-        // Guest already joined, just start
         startGame(selectedDifficulty);
     } else {
-        // Local game
         startGame(selectedDifficulty);
     }
 }
 
-// --- 6. LOBBY LOGIC (ONLINE MULTIPLAYER) ---
+// --- 6. LOBBY LOGIC ---
 function createLobby() {
-    // Set game type to online and show step 2
     selectedGameType = 'online';
     isHost = true;
     isOnline = true;
     
-    // Hide step 1, show step 2
     document.getElementById('step-1-container').style.display = 'none';
     document.getElementById('step-2-container').style.display = 'block';
 }
@@ -161,7 +156,9 @@ async function createLobbyInSupabase() {
             category: currentCategory,
             difficulty: selectedDifficulty,
             current_star_id: 0,
-            round_start_at: new Date().toISOString()
+            round_start_at: new Date().toISOString(),
+            p1_score: 0,
+            p2_score: 0
         }]);
 
         if (error) {
@@ -172,7 +169,6 @@ async function createLobbyInSupabase() {
         lobbyCode = code;
         alert(`Host Code: ${code}\nWaiting for opponent...`);
         
-        // Hide setup and show waiting state
         document.getElementById('setup-container').style.display = 'none';
         document.getElementById('game-view').style.display = 'flex';
         document.getElementById('game-container').innerHTML = `
@@ -216,7 +212,6 @@ async function joinLobby() {
             lobbyCode = code;
             currentCategory = data[0].category;
             
-            // Hide setup and show waiting state
             document.getElementById('setup-container').style.display = 'none';
             document.getElementById('game-view').style.display = 'flex';
             document.getElementById('game-container').innerHTML = `
@@ -237,10 +232,7 @@ async function joinLobby() {
     }
 }
 
-let lastSyncedStarId = -1; // Track last synced star to avoid duplicate syncs
-
 function subscribeToLobby(code) {
-    // Poll the lobby every 500ms for faster sync
     const pollInterval = setInterval(async () => {
         try {
             const { data, error } = await supabaseClient
@@ -266,12 +258,10 @@ function subscribeToLobby(code) {
             
             // Guest waits for host to change status to 'playing'
             if (data.status === 'playing' && !isHost) {
-                if (!currentStar) {
-                    // Game hasn't loaded yet, load it
+                if (!currentStar && !starsData.length) {
                     console.log('Guest loading game data with difficulty:', data.difficulty);
                     clearInterval(pollInterval);
                     await loadGameData(data.difficulty);
-                    // Restart polling after game loads
                     subscribeToLobby(code);
                     return;
                 }
@@ -279,60 +269,87 @@ function subscribeToLobby(code) {
                 // Game is loaded, check if star needs syncing
                 if (data.current_star_id !== null && data.current_star_id !== undefined) {
                     if (lastSyncedStarId !== data.current_star_id) {
-                        console.log('Guest syncing to star index:', data.current_star_id, 'from:', lastSyncedStarId);
+                        console.log('Guest syncing to star index:', data.current_star_id);
                         lastSyncedStarId = data.current_star_id;
                         syncRemoteRound(data.current_star_id);
                     }
                 }
             }
+            
+            // Sync scores for both players
+            if (data.status === 'playing' && isOnline) {
+                if (isHost && data.p2_score !== null) {
+                    if (players[1]) {
+                        players[1].score = data.p2_score;
+                    }
+                } else if (!isHost && data.p1_score !== null) {
+                    if (players[0]) {
+                        players[0].score = data.p1_score;
+                    }
+                }
+                renderSidebar();
+            }
         } catch (err) {
             console.error('Subscription poll error:', err);
         }
-    }, 500); // Poll every 500ms instead of 1000ms
+    }, 500);
     
-    // Store interval ID so we can clear it later if needed
     window.lobbyPollInterval = pollInterval;
 }
 
 async function startMPGame() {
     try {
-        // First update status to 'playing'
         await supabaseClient.from('lobbies').update({ status: 'playing' }).eq('id', lobbyCode);
         console.log('Lobby status updated to playing');
         
-        // Then load and start the game
         await loadGameData(selectedDifficulty);
         
-        // Wait a moment for both to be ready, then start
         setTimeout(() => {
             console.log('Host calling nextRound after delay');
             nextRound();
-        }, 500);
+        }, 1000);
     } catch (err) {
         console.error("Start MP game error:", err);
         alert("Failed to start game");
     }
 }
 
-async function syncRemoteRound(starIndex) {
-    if (isAnswered) return; // Don't interrupt current answer
+function syncRemoteRound(starIndex) {
+    console.log('syncRemoteRound called with starIndex:', starIndex, 'current isAnswered:', isAnswered, 'currentStar index:', currentStar ? starsData.indexOf(currentStar) : 'none');
     
-    console.log('Syncing remote round for star index:', starIndex);
+    if (!starsData || !starsData[starIndex]) {
+        console.error('Star not found at index:', starIndex, 'starsData length:', starsData ? starsData.length : 0);
+        return;
+    }
     
-    if (!starsData[starIndex]) {
-        console.error('Star not found at index:', starIndex);
+    // If guest is still answering the OLD question, don't load new one yet
+    if (!isAnswered && currentStar && starsData.indexOf(currentStar) !== starIndex) {
+        console.log('Guest is still answering previous question, not syncing yet');
+        return;
+    }
+    
+    // If already on this star, don't reload
+    if (currentStar && starsData.indexOf(currentStar) === starIndex && !isAnswered) {
+        console.log('Already on correct star, no need to sync');
         return;
     }
     
     currentStar = starsData[starIndex];
     shownStarsIndices.add(starIndex);
+    lastSyncedStarId = starIndex;
+    
+    console.log('Syncing to new star:', currentStar.name, 'image:', currentStar.image);
+    
+    isAnswered = false;
+    pointValue = 10;
+    clearInterval(timerInterval);
     
     const starImage = document.getElementById('star-image');
     if (starImage) {
-        console.log('Setting image URL:', currentStar.image);
+        console.log('Setting image src to:', currentStar.image);
         starImage.src = currentStar.image;
-    } else {
-        console.error('star-image element not found');
+        starImage.onerror = () => console.error('Failed to load image:', currentStar.image);
+        starImage.onload = () => console.log('Image loaded successfully');
     }
     
     const feedback = document.getElementById('feedback');
@@ -354,7 +371,17 @@ async function syncRemoteRound(starIndex) {
     const submitBtn = document.getElementById('submit-btn');
     if (submitBtn) submitBtn.style.display = 'block';
     
+    players.forEach(p => {
+        p.selected = false;
+        const pill = document.getElementById(`pill-${p.id}`);
+        if (pill) pill.classList.remove('active');
+    });
+    
+    document.getElementById('quick-select-zone').style.display = 'none';
+    
     if (gameMode === 'timed') startTimer();
+    
+    console.log('syncRemoteRound completed');
 }
 
 // --- 7. CORE GAMEPLAY ---
@@ -363,13 +390,11 @@ async function startGame(difficulty) {
     players = [];
     
     if (isOnline) {
-        // Online: 2 players (Host & Guest)
         players = [
             { id: 1, name: "Host", score: 0, streak: 0, selected: false },
             { id: 2, name: "Guest", score: 0, streak: 0, selected: false }
         ];
     } else {
-        // Local: multiple players
         for (let i = 1; i <= count; i++) {
             const customName = document.getElementById(`setup-name-${i}`).value.trim();
             players.push({ id: i, name: customName || `Player ${i}`, score: 0, streak: 0, selected: false });
@@ -415,7 +440,6 @@ async function loadGameData(difficulty) {
         document.getElementById('setup-container').style.display = 'none';
         document.getElementById('game-view').style.display = 'flex';
         
-        // Rebuild game container (in case it was replaced with waiting message)
         document.getElementById('game-container').innerHTML = `
             <div id="timer-bar-container" style="display: none;">
                 <div id="timer-bar"></div>
@@ -448,14 +472,12 @@ async function loadGameData(difficulty) {
         renderSidebar();
         renderSelectionZone();
         
-        // Only call nextRound if it's local game or guest
-        // Host's nextRound will be called by startMPGame after delay
         if (!isOnline || !isHost) {
             nextRound();
         }
     } catch (e) { 
         console.error('Error loading game data:', e);
-        alert(`Error loading ${currentCategory} data! Check console for details.\n\nMake sure ${fileName} exists in your project folder.`); 
+        alert(`Error loading ${currentCategory} data! Check console for details.`); 
     }
 }
 
@@ -500,6 +522,10 @@ function renderSidebar() {
 }
 
 function nextRound() {
+    if (isOnline && isHost) {
+        console.log('Host moving to next round, updating database...');
+    }
+    
     isAnswered = false;
     pointValue = 10;
     clearInterval(timerInterval);
@@ -531,9 +557,9 @@ function nextRound() {
     const globalIdx = starsData.indexOf(currentStar);
     shownStarsIndices.add(globalIdx);
 
+    console.log('nextRound: new star index:', globalIdx, 'name:', currentStar.name);
     document.getElementById('star-image').src = currentStar.image;
     
-    // If online and host, sync to other player
     if (isOnline && isHost) {
         console.log('Host updating database with new star index:', globalIdx);
         updateLobbyGameState(globalIdx);
@@ -547,7 +573,12 @@ function nextRound() {
 async function updateLobbyGameState(starIndex) {
     try {
         console.log('Updating lobby with star index:', starIndex);
-        const { error } = await supabaseClient.from('lobbies').update({ current_star_id: starIndex }).eq('id', lobbyCode);
+        const { error } = await supabaseClient.from('lobbies').update({ 
+            current_star_id: starIndex,
+            round_start_at: new Date().toISOString(),
+            p1_score: players[0] ? players[0].score : 0,
+            p2_score: players[1] ? players[1].score : 0
+        }).eq('id', lobbyCode);
         if (error) {
             console.error('Update star error:', error);
         } else {
@@ -568,6 +599,13 @@ function checkGuess() {
         updateScores(true);
         addToHistory(true);
         endTurn();
+        
+        if (!isOnline || isHost) {
+            document.getElementById('next-btn').style.display = "block";
+        } else {
+            document.getElementById('next-btn').style.display = "none";
+            document.getElementById('feedback').textContent += " (Waiting for host...)";
+        }
     } else {
         document.getElementById('feedback').textContent = "WRONG!";
         document.getElementById('feedback').className = "wrong";
@@ -575,24 +613,61 @@ function checkGuess() {
 }
 
 function updateScores(correct) {
+    if (!players || players.length === 0) {
+        console.error('No players array');
+        return;
+    }
+    
     if (players.length === 1) {
         const p = players[0];
         if (correct) { p.score += pointValue; p.streak++; } 
         else { p.streak = 0; }
     } else {
-        players.forEach(p => {
-            if (p.selected && correct) { p.score += pointValue; p.streak++; } 
-            else if (p.selected && !correct) { p.streak = 0; }
+        if (isOnline) {
+            const myPlayerIndex = isHost ? 0 : 1;
+            if (players[myPlayerIndex]) {
+                if (correct) { 
+                    players[myPlayerIndex].score += pointValue; 
+                    players[myPlayerIndex].streak++; 
+                } else { 
+                    players[myPlayerIndex].streak = 0; 
+                }
+            }
+        } else {
+            players.forEach(p => {
+                if (p.selected && correct) { p.score += pointValue; p.streak++; } 
+                else if (p.selected && !correct) { p.streak = 0; }
+            });
+        }
+    }
+    
+    if (isOnline) {
+        const hostScore = players[0] ? players[0].score : 0;
+        const guestScore = players[1] ? players[1].score : 0;
+        
+        supabaseClient.from('lobbies').update({
+            p1_score: hostScore,
+            p2_score: guestScore
+        }).eq('id', lobbyCode).then(({ error }) => {
+            if (error) console.error('Score update error:', error);
+            else console.log('Scores synced to database:', { hostScore, guestScore });
         });
     }
+    
     renderSidebar();
 }
 
 function endTurn() {
     isAnswered = true;
-    document.getElementById('guess-input').disabled = true;
+    const input = document.getElementById('guess-input');
+    if (input) {
+        input.disabled = true;
+    }
     document.getElementById('submit-btn').style.display = 'none';
-    document.getElementById('next-btn').style.display = 'block';
+    
+    if (!isOnline || isHost) {
+        document.getElementById('next-btn').style.display = 'block';
+    }
 }
 
 function saveSession() {
@@ -602,14 +677,24 @@ function saveSession() {
 }
 
 function startTimer() {
-    timeLeft = parseInt(document.getElementById('time-limit').value);
+    const timeLimitValue = parseInt(document.getElementById('time-limit').value);
+    let adjustedTimeLimit = timeLimitValue;
+    
+    if (isOnline && !isHost) {
+        console.log('Guest syncing timer with host round start time');
+    }
+    
+    timeLeft = adjustedTimeLimit;
     document.getElementById('timer-bar-container').style.display = 'block';
-    const totalTime = timeLeft;
+    const totalTime = adjustedTimeLimit;
+    
     timerInterval = setInterval(() => {
         timeLeft -= 0.1;
         document.getElementById('timer-bar').style.width = (timeLeft / totalTime) * 100 + "%";
+        
         if (timeLeft <= 0) {
             clearInterval(timerInterval);
+            console.log('Timer expired, revealing answer');
             revealName();
             document.getElementById('feedback').textContent = "TIMEOUT!";
         }
@@ -630,6 +715,13 @@ function revealName() {
     updateScores(false);
     addToHistory(false);
     endTurn();
+    
+    if (!isOnline || isHost) {
+        document.getElementById('next-btn').style.display = "block";
+    } else {
+        document.getElementById('next-btn').style.display = "none";
+        document.getElementById('feedback').textContent += " (Waiting for host...)";
+    }
 }
 
 function addToHistory(correct) {
@@ -663,8 +755,8 @@ function showEndGame() {
 function resetSession() {
     if (confirm("Reset everything?")) { 
         localStorage.clear();
-        if (isOnline && lobbySubscription) {
-            lobbySubscription.unsubscribe();
+        if (window.lobbyPollInterval) {
+            clearInterval(window.lobbyPollInterval);
         }
         location.reload(); 
     }
@@ -686,7 +778,6 @@ window.addEventListener('keydown', (e) => {
     
     const isTyping = e.target.tagName === 'INPUT' || e.target.isContentEditable;
 
-    // Number Keys 1-9 to toggle player selection
     if (!isAnswered && e.key >= '1' && e.key <= '9') {
         const id = parseInt(e.key);
         if (id <= players.length) {
@@ -694,8 +785,22 @@ window.addEventListener('keydown', (e) => {
         }
     }
 
-    if (e.key === 'Enter' && !isAnswered) { checkGuess(); return; }
-    if (e.code === 'Space' && isAnswered) { e.preventDefault(); nextRound(); return; }
+    if (e.key === 'Enter' && !isAnswered) { 
+        checkGuess(); 
+        return; 
+    }
+    
+    if (e.code === 'Space' && isAnswered) { 
+        e.preventDefault();
+        
+        if (isOnline && !isHost) {
+            console.log('Guest cannot use spacebar, must wait for host to click Next');
+            return;
+        }
+        
+        nextRound(); 
+        return; 
+    }
 
     if (!isTyping) {
         if (e.key.toLowerCase() === 'h' && !isAnswered) revealHint();
