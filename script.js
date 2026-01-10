@@ -237,8 +237,10 @@ async function joinLobby() {
     }
 }
 
+let lastSyncedStarId = -1; // Track last synced star to avoid duplicate syncs
+
 function subscribeToLobby(code) {
-    // Poll the lobby every 1 second instead of using WebSocket
+    // Poll the lobby every 500ms for faster sync
     const pollInterval = setInterval(async () => {
         try {
             const { data, error } = await supabaseClient
@@ -254,43 +256,39 @@ function subscribeToLobby(code) {
             
             if (!data) return;
             
-            console.log('Lobby polled:', data);
-            
             // Host starts game when guest joins
             if (data.p2_name && data.status === 'waiting' && isHost) {
                 console.log('Host detected guest joined, starting game');
                 clearInterval(pollInterval);
                 startMPGame();
+                return;
             }
             
             // Guest waits for host to change status to 'playing'
             if (data.status === 'playing' && !isHost) {
-                console.log('Guest detected game started');
                 if (!currentStar) {
                     // Game hasn't loaded yet, load it
+                    console.log('Guest loading game data with difficulty:', data.difficulty);
                     clearInterval(pollInterval);
-                    loadGameData(data.difficulty);
-                } else {
-                    // Game is loaded, sync the star
-                    if (data.current_star_id !== null && data.current_star_id !== undefined) {
-                        if (!currentStar || starsData.indexOf(currentStar) !== data.current_star_id) {
-                            console.log('Guest syncing star from host:', data.current_star_id);
-                            syncRemoteRound(data.current_star_id);
-                        }
-                    }
+                    await loadGameData(data.difficulty);
+                    // Restart polling after game loads
+                    subscribeToLobby(code);
+                    return;
                 }
-            }
-            
-            // Host syncing - when guest is synced, update star
-            if (data.status === 'playing' && isHost && data.current_star_id !== null) {
-                if (!currentStar || starsData.indexOf(currentStar) !== data.current_star_id) {
-                    console.log('Host syncing with database star:', data.current_star_id);
+                
+                // Game is loaded, check if star needs syncing
+                if (data.current_star_id !== null && data.current_star_id !== undefined) {
+                    if (lastSyncedStarId !== data.current_star_id) {
+                        console.log('Guest syncing to star index:', data.current_star_id, 'from:', lastSyncedStarId);
+                        lastSyncedStarId = data.current_star_id;
+                        syncRemoteRound(data.current_star_id);
+                    }
                 }
             }
         } catch (err) {
             console.error('Subscription poll error:', err);
         }
-    }, 1000);
+    }, 500); // Poll every 500ms instead of 1000ms
     
     // Store interval ID so we can clear it later if needed
     window.lobbyPollInterval = pollInterval;
@@ -304,6 +302,12 @@ async function startMPGame() {
         
         // Then load and start the game
         await loadGameData(selectedDifficulty);
+        
+        // Wait a moment for both to be ready, then start
+        setTimeout(() => {
+            console.log('Host calling nextRound after delay');
+            nextRound();
+        }, 500);
     } catch (err) {
         console.error("Start MP game error:", err);
         alert("Failed to start game");
@@ -444,7 +448,11 @@ async function loadGameData(difficulty) {
         renderSidebar();
         renderSelectionZone();
         
-        if (isHost || !isOnline) nextRound();
+        // Only call nextRound if it's local game or guest
+        // Host's nextRound will be called by startMPGame after delay
+        if (!isOnline || !isHost) {
+            nextRound();
+        }
     } catch (e) { 
         console.error('Error loading game data:', e);
         alert(`Error loading ${currentCategory} data! Check console for details.\n\nMake sure ${fileName} exists in your project folder.`); 
@@ -527,6 +535,7 @@ function nextRound() {
     
     // If online and host, sync to other player
     if (isOnline && isHost) {
+        console.log('Host updating database with new star index:', globalIdx);
         updateLobbyGameState(globalIdx);
     }
     
@@ -537,7 +546,13 @@ function nextRound() {
 
 async function updateLobbyGameState(starIndex) {
     try {
-        await supabaseClient.from('lobbies').update({ current_star_id: starIndex }).eq('id', lobbyCode);
+        console.log('Updating lobby with star index:', starIndex);
+        const { error } = await supabaseClient.from('lobbies').update({ current_star_id: starIndex }).eq('id', lobbyCode);
+        if (error) {
+            console.error('Update star error:', error);
+        } else {
+            console.log('Successfully updated lobby, star index:', starIndex);
+        }
     } catch (err) {
         console.error("Update star error:", err);
     }
