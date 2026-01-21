@@ -357,34 +357,31 @@ function subscribeToLobby(code) {
             // When both have answered (or timed out), show score review and proceed
             if (data.status === 'playing' && data.p1_answered && data.p2_answered && isAnswered) {
                 // Check if we already showed review for this star
-                if (lastScoreReviewStarId === data.current_star_id) {
-                    return; // Already showed review for this star
-                }
+                const alreadyShownForThisStar = (lastScoreReviewStarId === data.current_star_id);
+                const currentlyShowing = showingScoreReview;
                 
-                // Also check the flag as secondary protection
-                if (showingScoreReview) {
-                    return; // Already showing
-                }
-                
-                // Cancel grace period if running (only in normal mode)
-                if (inGracePeriod) {
-                    cancelGracePeriod();
-                }
-                
-                // Set both protections
-                showingScoreReview = true;
-                lastScoreReviewStarId = data.current_star_id;
-                
-                if (isHost) {
-                    showScoreReviewPopup(() => {
-                        showingScoreReview = false;
-                        nextRound();
-                    });
-                } else {
-                    // Guest just watches the score review, doesn't trigger next round
-                    showScoreReviewPopup(() => {
-                        showingScoreReview = false;
-                    });
+                // Only show if we haven't shown for this star AND not currently showing
+                if (!alreadyShownForThisStar && !currentlyShowing) {
+                    // Cancel grace period if running (only in normal mode)
+                    if (inGracePeriod) {
+                        cancelGracePeriod();
+                    }
+                    
+                    // Set both protections
+                    showingScoreReview = true;
+                    lastScoreReviewStarId = data.current_star_id;
+                    
+                    if (isHost) {
+                        showScoreReviewPopup(() => {
+                            showingScoreReview = false;
+                            nextRound();
+                        });
+                    } else {
+                        // Guest just watches the score review, doesn't trigger next round
+                        showScoreReviewPopup(() => {
+                            showingScoreReview = false;
+                        });
+                    }
                 }
             }
         } catch (err) {
