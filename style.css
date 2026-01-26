@@ -85,22 +85,133 @@ h1 span {
     flex: 1; 
     padding: 10px; 
     background: #25252e; 
-    border: 1px solid #444; 
+    border: 2px solid transparent;
     color: #fff; 
     cursor: pointer; 
     border-radius: 8px; 
-    transition: 0.2s; 
+    transition: all 0.3s ease;
     font-weight: 600;
-    border: none;
+    position: relative;
+    overflow: hidden;
+}
+
+.mode-btn::before {
+    content: '';
+    position: absolute;
+    top: 0;
+    left: -100%;
+    width: 100%;
+    height: 100%;
+    background: linear-gradient(90deg, transparent, rgba(214, 51, 132, 0.15), transparent);
+    transition: 0.5s;
+}
+
+.mode-btn:hover::before {
+    left: 100%;
 }
 
 .mode-btn:hover {
     background: #2a2a33;
+    border-color: rgba(214, 51, 132, 0.3);
+    transform: translateY(-1px);
+}
+
+.mode-btn:active {
+    transform: scale(0.98);
 }
 
 .mode-btn.active { 
-    background: var(--primary); 
+    background: linear-gradient(135deg, rgba(214, 51, 132, 0.25), rgba(214, 51, 132, 0.1));
     border-color: var(--primary);
+    box-shadow: 0 0 15px rgba(214, 51, 132, 0.4);
+}
+
+/* New mode card grid for 4 game modes */
+.mode-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 12px;
+    margin-bottom: 15px;
+}
+
+.mode-card {
+    background: #25252e;
+    border: 2px solid transparent;
+    padding: 15px 12px;
+    border-radius: 12px;
+    cursor: pointer;
+    transition: all 0.3s ease;
+    text-align: center;
+    position: relative;
+    overflow: hidden;
+}
+
+.mode-card::before {
+    content: '';
+    position: absolute;
+    top: 0;
+    left: -100%;
+    width: 100%;
+    height: 100%;
+    background: linear-gradient(90deg, transparent, rgba(214, 51, 132, 0.1), transparent);
+    transition: 0.5s;
+}
+
+.mode-card:hover::before {
+    left: 100%;
+}
+
+.mode-card:hover {
+    background: #2a2a33;
+    border-color: rgba(214, 51, 132, 0.3);
+    transform: translateY(-2px);
+}
+
+.mode-card:active {
+    transform: translateY(0) scale(0.98);
+}
+
+.mode-card.active {
+    background: linear-gradient(135deg, rgba(214, 51, 132, 0.2), rgba(214, 51, 132, 0.05));
+    border-color: var(--primary);
+    box-shadow: 0 0 20px rgba(214, 51, 132, 0.3);
+}
+
+.mode-icon {
+    font-size: 2rem;
+    margin-bottom: 8px;
+    filter: grayscale(100%);
+    opacity: 0.5;
+    transition: all 0.3s ease;
+}
+
+.mode-card.active .mode-icon {
+    filter: grayscale(0%);
+    opacity: 1;
+    transform: scale(1.1);
+}
+
+.mode-card:hover .mode-icon {
+    filter: grayscale(0%);
+    opacity: 0.8;
+    transform: scale(1.05);
+}
+
+.mode-title {
+    font-weight: 700;
+    font-size: 0.95rem;
+    margin-bottom: 4px;
+    color: #fff;
+}
+
+.mode-desc {
+    font-size: 0.7rem;
+    color: #888;
+    line-height: 1.3;
+}
+
+.mode-card.active .mode-desc {
+    color: #aaa;
 }
 
 .difficulty-grid { 
@@ -112,23 +223,124 @@ h1 span {
 .diff-btn { 
     background: #25252e; 
     color: white; 
-    border: 1px solid rgba(255,255,255,0.1); 
+    border: 2px solid transparent;
     padding: 12px; 
     border-radius: 8px; 
     cursor: pointer; 
-    transition: 0.2s; 
+    transition: all 0.3s ease;
     font-weight: bold; 
-    border: none;
     font-size: 1rem;
+    position: relative;
+    overflow: hidden;
+}
+
+.diff-btn::before {
+    content: '';
+    position: absolute;
+    top: 0;
+    left: -100%;
+    width: 100%;
+    height: 100%;
+    background: linear-gradient(90deg, transparent, rgba(46, 204, 113, 0.15), transparent);
+    transition: 0.5s;
+}
+
+.diff-btn:hover::before {
+    left: 100%;
 }
 
 .diff-btn:hover { 
     background: #2a2a33;
+    border-color: rgba(46, 204, 113, 0.3);
+    transform: translateY(-1px);
+}
+
+.diff-btn:active {
+    transform: scale(0.98);
 }
 
 .diff-btn.active {
-    background: var(--primary);
+    background: linear-gradient(135deg, rgba(46, 204, 113, 0.25), rgba(46, 204, 113, 0.1));
+    border-color: var(--success);
+    box-shadow: 0 0 15px rgba(46, 204, 113, 0.4);
     color: white;
+}
+
+/* Score target buttons */
+.score-target-grid {
+    display: grid;
+    grid-template-columns: repeat(4, 1fr);
+    gap: 10px;
+    margin-bottom: 10px;
+}
+
+.score-btn {
+    background: #25252e;
+    border: 2px solid transparent;
+    padding: 12px 8px;
+    border-radius: 10px;
+    cursor: pointer;
+    transition: all 0.3s ease;
+    text-align: center;
+    position: relative;
+    overflow: hidden;
+}
+
+.score-btn::before {
+    content: '';
+    position: absolute;
+    top: 0;
+    left: -100%;
+    width: 100%;
+    height: 100%;
+    background: linear-gradient(90deg, transparent, rgba(214, 51, 132, 0.15), transparent);
+    transition: 0.5s;
+}
+
+.score-btn:hover::before {
+    left: 100%;
+}
+
+.score-btn:hover {
+    background: #2a2a33;
+    border-color: rgba(214, 51, 132, 0.3);
+    transform: translateY(-1px);
+}
+
+.score-btn:active {
+    transform: scale(0.98);
+}
+
+.score-btn.active {
+    background: linear-gradient(135deg, rgba(214, 51, 132, 0.25), rgba(214, 51, 132, 0.1));
+    border-color: var(--primary);
+    box-shadow: 0 0 15px rgba(214, 51, 132, 0.4);
+}
+
+.score-icon {
+    font-size: 1.5rem;
+    margin-bottom: 4px;
+    filter: grayscale(100%);
+    opacity: 0.5;
+    transition: all 0.3s ease;
+}
+
+.score-btn.active .score-icon {
+    filter: grayscale(0%);
+    opacity: 1;
+    transform: scale(1.1);
+}
+
+.score-btn:hover .score-icon {
+    filter: grayscale(0%);
+    opacity: 0.8;
+    transform: scale(1.05);
+}
+
+.score-text {
+    font-size: 0.85rem;
+    font-weight: 600;
+    color: #fff;
 }
 
 .button-group { 

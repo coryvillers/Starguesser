@@ -29,8 +29,10 @@ let pointValue = 10;
 let timerInterval = null;
 let timeLeft = 0;
 let timerDuration = 20; // Default timer duration in seconds
-let currentCategory = 'global';
+let currentCategory = 'Global';
 let localUsername = "";
+let scoreTarget = 0; // 0 = zen mode (unlimited), otherwise race to this score
+let currentRound = 0; // Track which round we're on
 
 // --- 3. MULTIPLAYER STATE ---
 let lobbyCode = null;
@@ -78,7 +80,8 @@ function generateNameInputs() {
 
 function setMode(mode) {
     gameMode = mode;
-    document.querySelectorAll('.mode-btn').forEach(btn => btn.classList.remove('active'));
+    // Remove active from all mode cards (not category buttons!)
+    document.querySelectorAll('.mode-card').forEach(btn => btn.classList.remove('active'));
     document.getElementById(`mode-${mode}`).classList.add('active');
     const timeLimitEl = document.getElementById('time-limit');
     if (timeLimitEl) {
@@ -92,8 +95,59 @@ function setMode(mode) {
 function setCategory(cat) {
     currentCategory = cat;
     document.getElementById('cat-global').classList.toggle('active', cat === 'Global');
-    document.getElementById('cat-jav').classList.toggle('active', cat === 'JAV');
+    document.getElementById('cat-jav').classList.toggle('active', cat === 'jav');
 }
+
+function setScoreTarget(target) {
+    scoreTarget = target;
+    
+    // Remove active from all score buttons
+    document.querySelectorAll('.score-btn').forEach(btn => btn.classList.remove('active'));
+    
+    // Set active based on target
+    if (target === 0) {
+        document.getElementById('score-zen').classList.add('active');
+    } else if (target === 100) {
+        document.getElementById('score-100').classList.add('active');
+    } else if (target === 150) {
+        document.getElementById('score-150').classList.add('active');
+    } else if (target === 200) {
+        document.getElementById('score-200').classList.add('active');
+    }
+    
+    // Clear custom input if preset selected
+    const customInput = document.getElementById('custom-score-input');
+    if (customInput && [0, 100, 150, 200].includes(target)) {
+        customInput.value = '';
+    }
+}
+
+function setCustomScoreTarget() {
+    const input = document.getElementById('custom-score-input');
+    const value = parseInt(input.value);
+    
+    if (isNaN(value) || value < 5) {
+        alert('Please enter a valid score (minimum 5 points)');
+        return;
+    }
+    
+    if (value > 1000) {
+        alert('Maximum 1000 points allowed');
+        return;
+    }
+    
+    // Only allow multiples of 5
+    if (value % 5 !== 0) {
+        alert('Score must be a multiple of 5 (e.g., 50, 75, 125)');
+        return;
+    }
+    
+    scoreTarget = value;
+    
+    // Remove active from preset buttons
+    document.querySelectorAll('.score-btn').forEach(btn => btn.classList.remove('active'));
+}
+
 
 function showJoinInput() {
     document.getElementById('join-input-area').style.display = 'block';
@@ -177,10 +231,14 @@ async function createLobbyInSupabase() {
             difficulty: selectedDifficulty,
             game_mode: gameMode,
             timer_duration: timerDuration,
+            score_target: scoreTarget,
+            current_round: 0,
             current_star_id: 0,
             round_start_at: new Date().toISOString(),
             p1_score: 0,
             p2_score: 0,
+            p1_streak: 0,
+            p2_streak: 0,
             p1_answered: false,
             p2_answered: false
         }]);
@@ -296,6 +354,12 @@ function subscribeToLobby(code) {
                 if (data.timer_duration) {
                     timerDuration = data.timer_duration;
                 }
+                if (data.score_target !== undefined) {
+                    scoreTarget = data.score_target;
+                }
+                if (data.current_round !== undefined) {
+                    currentRound = data.current_round;
+                }
                 
                 if (!currentStar && !starsData.length) {
                     clearInterval(pollInterval);
@@ -314,10 +378,12 @@ function subscribeToLobby(code) {
                 }
             }
             
-            // Always sync BOTH scores AND names for BOTH players
+            // Always sync BOTH scores, streaks AND names for BOTH players
             if (data.status === 'playing' && isOnline && players && players.length >= 2) {
                 players[0].score = data.p1_score || 0;
                 players[1].score = data.p2_score || 0;
+                players[0].streak = data.p1_streak || 0;
+                players[1].streak = data.p2_streak || 0;
                 
                 // Also update names if they were generic defaults
                 if (data.p1_name && (players[0].name === 'Host' || players[0].name === 'Player 1')) {
@@ -711,13 +777,14 @@ function forceSyncToNewRound(starIndex) {
 async function startGame(difficulty) {
     const count = parseInt(document.getElementById('player-count').value) || 1;
     players = [];
+    currentRound = 0; // Reset round counter
     
     console.log('startGame called with difficulty:', difficulty, 'isOnline:', isOnline);
     
     if (isOnline) {
         const { data, error } = await supabaseClient
             .from('lobbies')
-            .select('p1_name, p2_name, p1_score, p2_score')
+            .select('p1_name, p2_name, p1_score, p2_score, p1_streak, p2_streak')
             .eq('id', lobbyCode)
             .single();
         
@@ -729,8 +796,8 @@ async function startGame(difficulty) {
             ];
         } else {
             players = [
-                { id: 1, name: data?.p1_name || "Host", score: data?.p1_score || 0, streak: 0, selected: false },
-                { id: 2, name: data?.p2_name || "Guest", score: data?.p2_score || 0, streak: 0, selected: false }
+                { id: 1, name: data?.p1_name || "Host", score: data?.p1_score || 0, streak: data?.p1_streak || 0, selected: false },
+                { id: 2, name: data?.p2_name || "Guest", score: data?.p2_score || 0, streak: data?.p2_streak || 0, selected: false }
             ];
         }
     } else {
@@ -797,6 +864,10 @@ async function loadGameData(difficulty) {
         }
         
         document.getElementById('game-container').innerHTML = `
+            <div id="progress-tracker" style="text-align: center; margin-bottom: 15px; padding: 10px; background: rgba(26, 26, 32, 0.6); border-radius: 8px; border: 1px solid #333;">
+                <!-- Dynamically updated -->
+            </div>
+            
             <div id="timer-bar-container" style="display: none;">
                 <div id="timer-bar"></div>
             </div>
@@ -826,6 +897,7 @@ async function loadGameData(difficulty) {
         `;
         
         renderSidebar();
+        updateProgressTracker(); // Initialize progress tracker
         
         if (!isOnline || isHost) {
             nextRound();
@@ -861,6 +933,38 @@ function renderSidebar() {
             </div>
         `;
     }).join('');
+}
+
+function updateProgressTracker() {
+    const tracker = document.getElementById('progress-tracker');
+    if (!tracker) return;
+    
+    if (scoreTarget > 0) {
+        // Score Race mode
+        const myPlayerIndex = isOnline ? (isHost ? 0 : 1) : 0;
+        const myScore = players[myPlayerIndex] ? players[myPlayerIndex].score : 0;
+        const remaining = scoreTarget - myScore;
+        
+        tracker.innerHTML = `
+            <div style="font-size: 0.75rem; color: #888; margin-bottom: 3px;">Race to ${scoreTarget} Points</div>
+            <div style="font-size: 1.1rem; font-weight: bold;">
+                <span style="color: var(--primary);">${myScore}</span>
+                <span style="color: #666; margin: 0 8px;">/</span>
+                <span style="color: #aaa;">${scoreTarget}</span>
+            </div>
+            <div style="font-size: 0.7rem; color: ${remaining <= 20 ? 'var(--hint)' : '#666'}; margin-top: 3px;">
+                ${remaining > 0 ? `${remaining} points to win` : '🎉 Target reached!'}
+            </div>
+        `;
+    } else {
+        // Zen mode
+        tracker.innerHTML = `
+            <div style="font-size: 0.75rem; color: var(--success); margin-bottom: 3px;">∞ Zen Mode</div>
+            <div style="font-size: 1.1rem; font-weight: bold; color: #aaa;">
+                Round ${currentRound}
+            </div>
+        `;
+    }
 }
 
 function editPlayerName(id) {
@@ -914,6 +1018,14 @@ function nextRound() {
         return;
     }
     
+    // Increment round counter
+    currentRound++;
+    
+    // Update database with current round (for online mode)
+    if (isOnline && isHost) {
+        updateCurrentRound(currentRound);
+    }
+    
     // Reset score review flag for new round
     showingScoreReview = false;
     
@@ -956,6 +1068,9 @@ function nextRound() {
     document.getElementById('guess-input').disabled = false;
     document.getElementById('next-btn').style.display = 'none';
     document.getElementById('submit-btn').style.display = 'block';
+    
+    // Update progress tracker
+    updateProgressTracker();
     
     // Reset opponent status display
     const opponentStatus = document.getElementById('opponent-status');
@@ -1001,6 +1116,20 @@ async function updateLobbyGameState(starIndex) {
     }
 }
 
+// Update current round in database
+async function updateCurrentRound(round) {
+    try {
+        const { error } = await supabaseClient
+            .from('lobbies')
+            .update({ current_round: round })
+            .eq('id', lobbyCode);
+        
+        if (error) console.error('Error updating round:', error);
+    } catch (err) {
+        console.error('Update round error:', err);
+    }
+}
+
 // --- 8. ANSWER & SCORING ---
 
 // FIXED #1: New function to mark player as answered
@@ -1008,13 +1137,17 @@ async function markPlayerAnswered() {
     try {
         const column = isHost ? 'p1_answered' : 'p2_answered';
         const scoreColumn = isHost ? 'p1_score' : 'p2_score';
-        const myScore = isHost ? players[0].score : players[1].score;
+        const streakColumn = isHost ? 'p1_streak' : 'p2_streak';
+        const myPlayerIndex = isHost ? 0 : 1;
+        const myScore = players[myPlayerIndex].score;
+        const myStreak = players[myPlayerIndex].streak;
         
         const { error } = await supabaseClient
             .from('lobbies')
             .update({ 
                 [column]: true,
-                [scoreColumn]: myScore
+                [scoreColumn]: myScore,
+                [streakColumn]: myStreak
             })
             .eq('id', lobbyCode);
         
@@ -1055,11 +1188,14 @@ function checkGuess() {
             markPlayerAnswered();
         }
         
-        if (!isOnline || isHost) {
+        // Next button visibility logic
+        if (!isOnline) {
+            // Local mode: show Next button immediately
             document.getElementById('next-btn').style.display = "block";
         } else {
+            // Online mode: Next button handled by score review popup
+            // Don't show it here - wait for both players to answer
             document.getElementById('next-btn').style.display = "none";
-            document.getElementById('feedback').textContent += " (Waiting for host...)";
         }
     } else {
         document.getElementById('feedback').textContent = "WRONG!";
@@ -1106,6 +1242,62 @@ function updateScores(correct) {
     }
     
     renderSidebar();
+    updateProgressTracker();
+    
+    // Check if anyone reached the score target
+    if (scoreTarget > 0) {
+        if (isOnline) {
+            // In online mode, check my score
+            const myPlayerIndex = isHost ? 0 : 1;
+            if (players[myPlayerIndex] && players[myPlayerIndex].score >= scoreTarget) {
+                // I won! Show winner screen
+                setTimeout(() => showWinnerScreen(players[myPlayerIndex]), 1000);
+            }
+        } else if (players.length === 1) {
+            // Single player mode
+            if (players[0].score >= scoreTarget) {
+                setTimeout(() => showWinnerScreen(players[0]), 1000);
+            }
+        } else {
+            // Local multiplayer - check if any player reached target
+            const winner = players.find(p => p.score >= scoreTarget);
+            if (winner) {
+                setTimeout(() => showWinnerScreen(winner), 1000);
+            }
+        }
+    }
+}
+
+function showWinnerScreen(winner) {
+    clearInterval(timerInterval);
+    if (window.lobbyPollInterval) {
+        clearInterval(window.lobbyPollInterval);
+    }
+    if (gracePeriodTimer) {
+        clearInterval(gracePeriodTimer);
+        gracePeriodTimer = null;
+    }
+    
+    // Update database status to 'ended' for online mode
+    if (isOnline && isHost && lobbyCode) {
+        supabaseClient.from('lobbies').update({
+            status: 'ended'
+        }).eq('id', lobbyCode);
+    }
+    
+    document.getElementById('end-game-overlay').style.display = 'flex';
+    
+    const message = scoreTarget > 0 
+        ? `🎉 ${winner.name} wins with ${winner.score} points!`
+        : `Game Over - ${currentRound} rounds played`;
+    
+    players.sort((a, b) => b.score - a.score);
+    document.getElementById('podium-container').innerHTML = `
+        <h2 style="color: var(--success); margin-bottom: 20px;">${message}</h2>
+        ${players.slice(0, 3).map((p, i) => `
+            <div class="podium-item rank-${i+1}">${i + 1} - ${p.name}: ${p.score} pts</div>
+        `).join('')}
+    `;
 }
 
 function endTurn() {
@@ -1116,7 +1308,9 @@ function endTurn() {
     }
     document.getElementById('submit-btn').style.display = 'none';
     
-    if (!isOnline || isHost) {
+    // Only show Next button in local mode
+    // In online mode, score review popup handles progression
+    if (!isOnline) {
         document.getElementById('next-btn').style.display = 'block';
     }
 }
@@ -1214,11 +1408,14 @@ function revealName() {
         markPlayerAnswered();
     }
     
-    if (!isOnline || isHost) {
+    // Next button visibility logic
+    if (!isOnline) {
+        // Local mode: show Next button immediately
         document.getElementById('next-btn').style.display = "block";
     } else {
+        // Online mode: Next button handled by score review popup
+        // Don't show it here - wait for both players to answer
         document.getElementById('next-btn').style.display = "none";
-        document.getElementById('feedback').textContent += " (Waiting for host...)";
     }
 }
 
@@ -1310,8 +1507,22 @@ window.addEventListener('keydown', (e) => {
     if (e.code === 'Space' && isAnswered) { 
         e.preventDefault();
         
+        // Guest cannot use spacebar in online mode
         if (isOnline && !isHost) {
             console.log('Guest cannot use spacebar, must wait for host to click Next');
+            return;
+        }
+        
+        // Block spacebar during grace period (normal mode)
+        if (isOnline && inGracePeriod) {
+            console.log('Cannot skip - grace period active, waiting for opponent');
+            return;
+        }
+        
+        // Block spacebar if Next button is not visible (means we're waiting)
+        const nextBtn = document.getElementById('next-btn');
+        if (nextBtn && nextBtn.style.display === 'none') {
+            console.log('Cannot skip - waiting for opponent to answer');
             return;
         }
         

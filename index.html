@@ -49,7 +49,7 @@
                 <label>Category</label>
                 <div class="mode-toggles">
                     <button class="mode-btn active" id="cat-global" onclick="setCategory('global')">Global Stars</button>
-                    <button class="mode-btn" id="cat-jav" onclick="setCategory('jav')">JAV Models</button>
+                    <button class="mode-btn" id="cat-jav" onclick="setCategory('jav')">JAV</button>
                 </div>
             </div>
 
@@ -72,6 +72,37 @@
                     <button class="diff-btn" id="diff-easy" onclick="selectDifficulty('easy')">Easy</button>
                     <button class="diff-btn" id="diff-medium" onclick="selectDifficulty('medium')">Medium</button>
                     <button class="diff-btn" id="diff-hard" onclick="selectDifficulty('hard')">Hard</button>
+                </div>
+            </div>
+
+            <div class="setup-group">
+                <label>Race to Score!</label>
+                <div class="score-target-grid">
+                    <button class="score-btn" id="score-zen" onclick="setScoreTarget(0)">
+                        <!-- <div class="score-icon">∞</div> -->
+                        <div class="score-text">Zen</div>
+                    </button>
+                    <button class="score-btn active" id="score-100" onclick="setScoreTarget(100)">
+                        <!-- <div class="score-icon">🎯</div> -->
+                        <div class="score-text">100</div>
+                    </button>
+                    <button class="score-btn" id="score-150" onclick="setScoreTarget(150)">
+                        <!-- <div class="score-icon">🏆</div> -->
+                        <div class="score-text">150</div>
+                    </button>
+                    <button class="score-btn" id="score-200" onclick="setScoreTarget(200)">
+                        <!-- <div class="score-icon">👑</div> -->
+                        <div class="score-text">200</div>
+                    </button>
+                </div>
+                
+                <div style="margin-top: 10px; display: flex; align-items: center; gap: 8px;">
+                    <label style="margin: 0; font-size: 0.85rem; color: #888;">Custom:</label>
+                    <input type="number" id="custom-score-input" min="5" max="1000" step="5" placeholder="Multiple of 5" 
+                           style="flex: 1; padding: 8px; border-radius: 6px; background: #25252e; color: white; border: 1px solid #444; font-size: 0.9rem;">
+                    <button onclick="setCustomScoreTarget()" style="padding: 8px 15px; border-radius: 6px; background: var(--primary); color: white; border: none; cursor: pointer; font-size: 0.9rem; font-weight: 600;">
+                        Set
+                    </button>
                 </div>
             </div>
 
@@ -117,7 +148,7 @@
                     <input type="text" id="guess-input" placeholder="Who is this?" autocomplete="off" oninput="toggleSelectionUI()">
                     
                     <div id="quick-select-zone" style="display:none;">
-                        <p style="font-size: 0.7rem; color: #666; margin: 5px 0;">Select Winners (Shortcuts: 1, 2, 3...)</p>
+                        <p style="font-size: 0.7rem; color: #666; margin: 5px 0;">Select Guesser (Shortcuts: 1, 2, 3...)</p>
                         <div id="selection-pills"></div>
                     </div>
 
